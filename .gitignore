@@ -127,3 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+**/*.swp
+cache.pickle
+correlation-jsons/
+csvs/
+wikidata.female.txt
+wikidata.male.txt
