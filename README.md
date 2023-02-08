@@ -17,7 +17,7 @@ python3 names_wikidata.py F > wikidata.female.txt
 
 ```bash
 mkdir csvs
-for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do for LNG in bg cs de el en es fi fr hu it pt ro ru; do python3 generate_from_templates.py ${MODEL} ${LNG} wikidata.male.txt.4 wikidata.female.txt.4 > csvs/${MODEL/\//-}.${LNG}.csv; done; done
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do for LNG in bg cs de el en es fi fr hu it pt ro ru; do python3 generate_from_templates.py ${MODEL} ${LNG} wikidata.male.txt wikidata.female.txt > csvs/${MODEL/\//-}.${LNG}.csv; done; done
 ```
 
 ## Collect correlation of country attributes, gender and professions
@@ -26,3 +26,9 @@ for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-c
 mkdir correlation-logs correlation-jsons
 for F in csvs/*.csv; do  python3 label_correlation.py $F correlation-jsons/$(basename $F | sed -e 's/\.csv/.json/') > correlation-logs/$(basename $F | sed -e 's/\.csv/.log/') ; done
 ```
+
+Get a CSV report
+
+python3 report.py correlation-jsons/sentence-transformers-LaBSE.{}.json
+python3 report.py correlation-jsons/paraphrase-multilingual-mpnet-base-v2.{}.json
+python3 report.py correlation-jsons/distiluse-base-multilingual-cased-v2.{}.json

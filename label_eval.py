@@ -9,8 +9,8 @@ import sys
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
-from sklearn.metrics import f1_score
-from scipy.stats import pearsonr
+from sklearn.metrics import f1_score, accuracy_score
+from scipy.stats import pearsonr, pointbiserialr, bootstrap
 from tqdm import tqdm
 
 
@@ -67,7 +67,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=argparse.FileType("r"))
     parser.add_argument("readable_output", type=argparse.FileType("w"), nargs="?", default=sys.stdout)
-    parser.add_argument("json_output", type=argparse.FileType("w"), default=None)
+    parser.add_argument("--json-output", type=argparse.FileType("w"), default=None, required=False)
+    parser.add_argument("--includes-jobs", default=False, required=False, action="store_true")
+    parser.add_argument("--includes-food", default=False, required=False, action="store_true")
     args = parser.parse_args()
 
     all_attributes = []
@@ -77,8 +79,11 @@ def main():
         tokens = line.strip().split(",")
         attributes = {
             f"country={tokens[0]}",
-            f"gender={tokens[1]}",
-            f"job_type={tokens[3]}"}
+            f"gender={tokens[1]}"}
+        if args.includes_jobs:
+            attributes.add(f"job_type={tokens[3]}")
+        if args.includes_food:
+            attributes.add(f"food={tokens[3]}")
         for label in COUNTRY_LABELS[tokens[0]]:
             attributes.add(f"country={label}")
         values = [float(x) for x in tokens[4:]]
@@ -91,22 +96,31 @@ def main():
         identifier = f"{attr_name}={attr_value}"
         mask = np.array([identifier in attrs for attrs in all_attributes])
         assert 0 < mask.sum() < len(mask), f"{identifier}, sum is {mask.sum()}"
-        baseline_f1 = 2 * mask.sum() / (len(mask) + mask.sum())
-        return identifier, mask, baseline_f1
+        #baseline_f1 = 2 * mask.sum() / (len(mask) + mask.sum())
+        baseline_acc = (mask == (mask.mean() > .5)).mean()
+        return identifier, mask, baseline_acc
 
     logging.info("Generate masks for attribute combinations.")
     country_label_masks = []
     for label in list(COUNTRY_LABELS.keys()) + list(set(sum(COUNTRY_LABELS.values(), []))):
         country_label_masks.append(
             get_mask_for_attr("country", label))
-    job_type_masks = [
-        get_mask_for_attr("job_type", job_type)
-        for job_type in ["low_profile", "high_profile"]]
     gender_masks = [
         get_mask_for_attr("gender", gender)
         for gender in ["male", "female"]]
+    job_type_masks = []
+    if args.includes_jobs:
+        job_type_masks = [
+            get_mask_for_attr("job_type", job_type)
+            for job_type in ["low_profile", "high_profile"]]
+    food_masks = []
+    if args.includes_food:
+        food_masks = [
+            get_mask_for_attr("food", food_type)
+            for food_type in ["good", "bad"] ]
 
-    combined_masks = country_label_masks + job_type_masks + gender_masks
+    combined_masks = (
+        country_label_masks + job_type_masks + gender_masks + food_masks)
     def combine_two_masks(first, second):
         for first_id, first_mask, _ in first:
             for second_id, second_mask, _ in second:
@@ -114,59 +128,57 @@ def main():
                 assert 0 < second_mask.sum() < len(second_mask)
 
                 new_mask = first_mask * second_mask
-                baseline_f1 = 2 * new_mask.sum() / (len(new_mask) + new_mask.sum())
+                #baseline_f1 = 2 * new_mask.sum() / (len(new_mask) + new_mask.sum())
+                baseline_acc = (new_mask == (new_mask.mean() > .5)).mean()
                 if new_mask.sum() == 0:
                     raise ValueError("All values are set to false.")
                 if new_mask.sum() == len(new_mask):
                     raise ValueError("All values are set to true.")
                 combined_masks.append((
-                    f"{first_id}&{second_id}", new_mask, baseline_f1))
+                    f"{first_id}&{second_id}", new_mask, baseline_acc))
 
     combine_two_masks(country_label_masks, job_type_masks)
     combine_two_masks(gender_masks, job_type_masks)
+    combine_two_masks(gender_masks, food_masks)
     combine_two_masks(country_label_masks, gender_masks)
     logging.info("In total %d combinations.", len(combined_masks))
 
     all_scores = [[] for _ in range(10)]
 
     logging.info("Compute correlations scores.")
-    for identifier, mask, baseline_f1 in tqdm(combined_masks):
+    for identifier, mask, baseline_acc in tqdm(combined_masks):
         mask_exp = np.expand_dims(mask, 0)
         for i, values in enumerate(all_values.T):
-            #preds = []
-            #for val in values:
-            #    pred = values >= val
-            #    preds.append(pred)
-            #    preds.append(~pred)
-            #preds_np = np.stack(preds)
+            ml_values = np.expand_dims(values, 1)
+            fit = LogisticRegression(penalty=None).fit(ml_values, mask).predict(ml_values)
 
-            #true_positives = (preds_np * (preds_np == mask_exp)).sum(1)
-            #precision = true_positives / (preds_np.sum(1) + 1e-9)
-            #recall = true_positives / mask_exp.sum(1)
-            #f1_scores = 2 * precision * recall / (precision + recall + 1e-9)
-            #max_f1 = f1_scores.max()
+            stat = bootstrap((mask == fit,), np.mean, n_resamples=1000)
+            score = (mask == fit).mean()
 
-            correlation = pearsonr(mask, values)
+            if stat.confidence_interval.low > baseline_acc:
+                all_scores[i].append((identifier, score - baseline_acc, baseline_acc))
 
-            #if max_f1 > baseline_f1 and correlation.pvalue < 0.01:
-            #    all_scores[i].append((identifier, max_f1, baseline_f1, correlation.statistic))
-            if correlation.pvalue < 0.01:
-                all_scores[i].append((identifier, correlation.statistic))
+
+            #correlation = pearsonr(mask, values)
+            #correlation = pointbiserialr(mask, values)
+
+            #if correlation.pvalue < 0.01:
+            #    all_scores[i].append((identifier, correlation.statistic))
 
     if args.json_output is not None:
         json.dump(all_scores, args.json_output)
 
     for dim in range(10):
         print(f"PCA {dim + 1}", file=args.readable_output)
-        print("==================")
+        print("==================", file=args.readable_output)
         #print("Best separation")
         #for feature, value, base, corr in sorted(all_scores[dim], key=lambda x: -x[1])[:10]:
         #    print(f" {color.BOLD}{value:.3f}{color.END}>{base:.3f}\t{corr:.3f}\t{feature}")
         #print()
         #print("Best correlation")
-        for feature, corr in sorted(all_scores[dim], key=lambda x: -abs(-x[1]))[:10]:
+        for feature, corr, baseline in sorted(all_scores[dim], key=lambda x: -abs(-x[1]))[:10]:
             #print(f" {value:.3f}>{base:.3f}\t{' ' if corr >= 0 else ''}{color.BOLD}{corr:.3f}{color.END}\t{feature}")
-            print(f" {' ' if corr >= 0 else ''}{corr:.3f}\t{feature}", file=args.readable_output)
+            print(f" {' ' if corr >= 0 else ''}{corr:.3f}\t{baseline:.3f}\t{feature}", file=args.readable_output)
         print()
 
     logging.info("Done.")
