@@ -57,7 +57,7 @@ COUNTRY_LABELS = {
     "sr": ["south", "east", "yugoslavia", "slavic-lng", "non-latin", "cyrillic", "landlocked", "balkan", "post-communist"],
     "sv": ["north", "monarchy", "eu", "eu15", "baltic-sea", "germanic-lng", "neutral"],
     "tr": ["south", "black-sea", "mediteranean-sea", "nato"],
-    "ua": ["east", "post-soviet", "post-communist", "slavic-lng", "black-sea", "non-latic", "cyrillic"],
+    "ua": ["east", "post-soviet", "post-communist", "slavic-lng", "black-sea", "non-latin", "cyrillic"],
     "uk": ["west", "nato", "english-speaking", "germanic-lng", "atlantic", "north-sea", "big", "g7", "island"],
     "xk": ["south-east", "south", "yugoslavia", "balkan", "landlocked"]
 }

@@ -17,7 +17,11 @@ python3 names_wikidata.py F > wikidata.female.txt
 
 ```bash
 mkdir csvs
-for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do for LNG in bg cs de el en es fi fr hu it pt ro ru; do python3 generate_from_templates.py ${MODEL} ${LNG} wikidata.male.txt wikidata.female.txt > csvs/${MODEL/\//-}.${LNG}.csv; done; done
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do
+        python3 generate_from_templates.py ${MODEL} ${LNG} wikidata.male.txt wikidata.female.txt > csvs/${MODEL/\//-}.${LNG}.csv
+    done
+done
 ```
 
 ## Collect correlation of country attributes, gender and professions
