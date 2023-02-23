@@ -22,12 +22,13 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 ENDPOINT_URL = 'https://query.wikidata.org/sparql'
 
 QUERY = """prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-select distinct ?item ?itemLabel ?itemDescription ?firstNameLabel where {{
+select distinct ?item ?itemLabel ?itemDescription ?firstNameLabel ?surnameLabel where {{
  ?item wdt:P31 wd:Q5;   # Any instance of a human.
        {}; # Condition
        wdt:P21 wd:Q{}.  # Sex or gender is ...
  ?item wdt:P569 ?born.
  ?item wdt:P735 ?firstName.
+ ?item wdt:P734 ?surname.
  FILTER( ?born >= "1940-01-01T00:00:00"^^xsd:dateTime )
  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en" }}
 }}
@@ -122,6 +123,7 @@ def jaro_distance(str1, str2):
 def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument("gender", choices=["M", "F"])
+    parser.add_argument("name", choices=["first", "surname"])
     args = parser.parse_args()
 
     if os.path.exists("cache.pickle"):
@@ -152,7 +154,13 @@ def main():
             for x in lng_people + country_people}.values()
         name_counts = Counter()
         for person in people:
-            name = person["firstNameLabel"]["value"]
+            if args.name == "first":
+                name = person["firstNameLabel"]["value"]
+            elif args.name == "surname":
+                name = person["surnameLabel"]["value"]
+            else:
+                raise ValueError("Unkown name type.")
+
             if re.match("Q[0-9]+", name):
                 continue
             if " / " in name:
