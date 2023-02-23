@@ -21,10 +21,10 @@ def main():
 
     plt.figure(figsize=(26, 15), dpi=100)
     ax = sns.heatmap(
-        corr,
-        xticklabels=all_labels,
-        yticklabels=all_labels,
-        mask=mask.T,
+        corr[1:,:-1],
+        xticklabels=all_labels[:-1],
+        yticklabels=all_labels[1:],
+        mask=mask.T[1:,:-1],
         vmin=-1, vmax=1, center=0,
         cmap=sns.diverging_palette(20, 220, n=200),
         square=True
