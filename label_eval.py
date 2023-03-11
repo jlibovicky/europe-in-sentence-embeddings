@@ -2,15 +2,15 @@
 
 import argparse
 from itertools import chain, combinations
-import logging
 import json
+import logging
+import random
 import sys
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import LinearSVC
 from sklearn.metrics import f1_score, accuracy_score
-from scipy.stats import pearsonr, pointbiserialr, bootstrap
+import scipy.stats
 from tqdm import tqdm
 
 
@@ -70,6 +70,8 @@ def main():
     parser.add_argument("--json-output", type=argparse.FileType("w"), default=None, required=False)
     parser.add_argument("--includes-jobs", default=False, required=False, action="store_true")
     parser.add_argument("--includes-food", default=False, required=False, action="store_true")
+    parser.add_argument("--samples", type=int, default=20, help="Samples for ootstrap resampling.")
+    parser.add_argument("--confidence", type=float, default=0.95)
     args = parser.parse_args()
 
     all_attributes = []
@@ -77,16 +79,17 @@ def main():
     logging.info("Load data from '%s'.", args.input)
     for line in args.input:
         tokens = line.strip().split(",")
-        attributes = {
-            f"country={tokens[0]}",
-            f"gender={tokens[1]}"}
+        attributes = set()
         if args.includes_jobs:
             attributes.add(f"job_type={tokens[3]}")
         if args.includes_food:
             attributes.add(f"food={tokens[3]}")
         for label in COUNTRY_LABELS[tokens[0]]:
             attributes.add(f"country={label}")
-        values = [float(x) for x in tokens[4:]]
+        if args.includes_jobs or args.includes_food:
+            values = [float(x) for x in tokens[4:]]
+        else:
+            values = [float(x) for x in tokens[1:]]
         all_attributes.append(attributes)
         all_values.append(values)
 
@@ -102,12 +105,12 @@ def main():
 
     logging.info("Generate masks for attribute combinations.")
     country_label_masks = []
-    for label in list(COUNTRY_LABELS.keys()) + list(set(sum(COUNTRY_LABELS.values(), []))):
+    for label in list(set(sum(COUNTRY_LABELS.values(), []))):
         country_label_masks.append(
             get_mask_for_attr("country", label))
-    gender_masks = [
-        get_mask_for_attr("gender", gender)
-        for gender in ["male", "female"]]
+    #gender_masks = [
+    #    get_mask_for_attr("gender", gender)
+    #    for gender in ["male", "female"]]
     job_type_masks = []
     if args.includes_jobs:
         job_type_masks = [
@@ -120,7 +123,7 @@ def main():
             for food_type in ["good", "bad"] ]
 
     combined_masks = (
-        country_label_masks + job_type_masks + gender_masks + food_masks)
+        country_label_masks + job_type_masks + food_masks)
     def combine_two_masks(first, second):
         for first_id, first_mask, _ in first:
             for second_id, second_mask, _ in second:
@@ -138,48 +141,61 @@ def main():
                     f"{first_id}&{second_id}", new_mask, baseline_acc))
 
     combine_two_masks(country_label_masks, job_type_masks)
-    combine_two_masks(gender_masks, job_type_masks)
-    combine_two_masks(gender_masks, food_masks)
-    combine_two_masks(country_label_masks, gender_masks)
     logging.info("In total %d combinations.", len(combined_masks))
 
-    all_scores = [[] for _ in range(10)]
+    all_scores = [[] for i in range(3)]
+    t_crit = np.abs(
+        scipy.stats.t.ppf((1 - args.confidence) / 2, args.samples - 1))
+
+    def confidence_int(data):
+        mean = np.mean(data)
+        std = np.std(data)
+        low = mean - std * t_crit / np.sqrt(args.samples)
+        high = mean + std * t_crit / np.sqrt(args.samples)
+        return low, mean, high
 
     logging.info("Compute correlations scores.")
     for identifier, mask, baseline_acc in tqdm(combined_masks):
+        best_f1 = 0.0
+        best_dim = None
+
         mask_exp = np.expand_dims(mask, 0)
-        for i, values in enumerate(all_values.T):
+        baseline_f1 = f1_score(mask, np.ones_like(mask))
+        for i, values in enumerate(all_values.T[:3]):
+            corr = scipy.stats.pearsonr(mask, values)
+            if corr.pvalue < 0.05:
+                all_scores[i].append((identifier, corr.statistic))
+            continue
+
             ml_values = np.expand_dims(values, 1)
             fit = LogisticRegression(penalty=None).fit(ml_values, mask).predict(ml_values)
+            zipped = list(zip(mask, fit))
 
-            stat = bootstrap((mask == fit,), np.mean, n_resamples=1000)
-            score = (mask == fit).mean()
+            accs = []
+            f1s = []
+            for _ in range(args.samples):
+                sample = random.sample(zipped, len(mask))
+                sample_gt, sample_pred = [list(t) for t in zip(*sample)]
+                accs.append(accuracy_score(sample_gt, sample_pred))
+                f1s.append(f1_score(sample_gt, sample_pred))
 
-            if stat.confidence_interval.low > baseline_acc:
-                all_scores[i].append((identifier, score - baseline_acc, baseline_acc))
+            acc_low, acc_mean, _ = confidence_int(accs)
+            f1_low, f1_mean, _ = confidence_int(f1s)
 
-
-            #correlation = pearsonr(mask, values)
-            #correlation = pointbiserialr(mask, values)
-
-            #if correlation.pvalue < 0.01:
-            #    all_scores[i].append((identifier, correlation.statistic))
+            #if acc_low > baseline_acc and f1_low > 0:
+            if f1_low > baseline_f1 and acc_low > baseline_acc:
+                all_scores[i].append((identifier, f1_mean))
+                best_f1 = f1_mean
 
     if args.json_output is not None:
         json.dump(all_scores, args.json_output)
 
-    for dim in range(10):
-        print(f"PCA {dim + 1}", file=args.readable_output)
-        print("==================", file=args.readable_output)
-        #print("Best separation")
-        #for feature, value, base, corr in sorted(all_scores[dim], key=lambda x: -x[1])[:10]:
-        #    print(f" {color.BOLD}{value:.3f}{color.END}>{base:.3f}\t{corr:.3f}\t{feature}")
-        #print()
-        #print("Best correlation")
-        for feature, corr, baseline in sorted(all_scores[dim], key=lambda x: -abs(-x[1]))[:10]:
-            #print(f" {value:.3f}>{base:.3f}\t{' ' if corr >= 0 else ''}{color.BOLD}{corr:.3f}{color.END}\t{feature}")
-            print(f" {' ' if corr >= 0 else ''}{corr:.3f}\t{baseline:.3f}\t{feature}", file=args.readable_output)
-        print()
+    for idx, values in enumerate(all_scores):
+        values.sort(key=lambda x: -x[1])
+        pos_str, pos_val = values[0]
+        neg_str, neg_val = values[-1]
+        #print(f"PCA {idx + 1}    " + ", ".join(f"{k} {v:.3f}" for k, v in values[:3]))
+        print(f"PCA {idx + 1}    {neg_str[8:]} {neg_val:.3f} --- {pos_str[8:]} {pos_val:.3f}")
 
     logging.info("Done.")
 

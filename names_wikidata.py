@@ -202,57 +202,8 @@ def main():
         name_list.sort(key=lambda x: (-x[1], -x[2]))
         name_tf_idfs[lng] = name_list
         logging.info("Best scoring: %s", name_list[:5])
-        print(f"{lng},{','.join([n for n, _, _ in name_list[:10]])}")
+        print(f"{lng},{','.join([n for n, _, _ in name_list[:20]])}")
 
 
 if __name__ == "__main__":
     main()
-
-
-
-# OLD ALGORITHM THAT SOMEHOW WORKED
-
-#    to_sets = {}
-#    to_lists = {}
-#
-#    for lng, code in LANGUAGES.items():
-#        logging.info("Download %s", lng)
-#        people = get_wiki_data(QUERY.format(code, GENDER[args.gender]))
-#        name_counts = Counter()
-#        for person in people:
-#            name = person["firstNameLabel"]["value"]
-#            if re.match("Q[0-9]+", name):
-#                continue
-#            if " / " in name:
-#                name = name.split(" / ")[0]
-#            name_counts[name] += 1
-#
-#
-#        top_sets[lng] = set(
-#            unidecode(k) for k, _ in name_counts.most_common(30))
-#        top_lists[lng] = [k for k, _ in name_counts.most_common(30)]
-#
-#
-#    with open("cache.pickle", "wb") as f_cache:
-#        pickle.dump(CACHE, f_cache)
-#
-#    for lng, names in top_lists.items():
-#        keep_names = []
-#        for name in names:
-#            keep_name = True
-#            for lng2, name_set in top_sets.items():
-#                if lng == lng2:
-#                    continue
-#                if unidecode(name) in name_set:
-#                    keep_name = False
-#                    break
-#                for name2 in name_set:
-#                    if get_jaro_distance(name, name2) > .93:
-#                        keep_name = False
-#                        break
-#                if not keep_name:
-#                    break
-#
-#            if keep_name:
-#                keep_names.append(name)
-#        print(f"{lng},{','.join(keep_names)}")
