@@ -3,13 +3,11 @@ from typing import Dict, Callable, List, TextIO
 from abc import ABC, abstractmethod
 import logging
 import pickle
-import random
 import os
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler
 import torch
 from transformers import (
     AutoTokenizer, FSMTForConditionalGeneration, MarianMTModel,
@@ -83,6 +81,24 @@ TRANSLATORS = {
 }
 
 
+# Taken from http://ukc.disi.unitn.it/index.php/lexsim/
+LANGUAGE_SIMILARITES = {
+    'bg': {"cs": 5.885, "de": 2.711, "el": 1.271, "en": 2.182, "es": 2.711, "fi": 1.133, "fr": 2.74, "hu": 1.975, "it": 3.05, "pt": 3.324, "ro": 3.138, "ru": 8.461},
+    'cs': {"bg": 5.885, "de": 3.733, "el": 1.171, "en": 2.439, "es": 2.639, "fi": 1.341, "fr": 2.749, "hu": 2.869, "it": 3.113, "pt": 3.315, "ro": 2.777, "ru": 6.17},
+    'de': {"bg": 2.711, "cs": 3.733, "el": 1.395, "en": 4.72, "es": 3.578, "fi": 1.793, "fr": 4.162, "hu": 2.986, "it": 4.186, "pt": 4.616, "ro": 3.473, "ru": 2.961},
+    'el': {"bg": 1.271, "cs": 1.171, "de": 1.395, "en": 1.22, "es": 1.51, "fi": 0.686, "fr": 1.551, "hu": 1.173, "it": 1.923, "pt": 1.882, "ro": 1.411, "ru": 0.937},
+    'en': {"bg": 2.182, "cs": 2.439, "de": 4.72, "el": 1.22, "es": 7.907, "fi": 1.734, "fr": 9.665, "hu": 1.844, "it": 6.757, "pt": 7.944, "ro": 6.194, "ru": 2.025},
+    'es': {"bg": 2.711, "cs": 2.639, "de": 3.578, "el": 1.51, "en": 7.907, "fi": 1.484, "fr": 11.196, "hu": 2.105, "it": 10.451, "pt": 17.414, "ro": 8.428, "ru": 2.252},
+    'fi': {"bg": 1.133, "cs": 1.341, "de": 1.793, "el": 0.686, "en": 1.734, "es": 1.484, "fr": 1.622, "hu": 1.581, "it": 1.825, "pt": 1.785, "ro": 1.511, "ru": 1.02},
+    'fr': {"bg": 2.74, "cs": 2.749, "de": 4.162, "el": 1.551, "en": 9.665, "es": 11.196, "fi": 1.622, "hu": 2.086, "it": 9.544, "pt": 11.979, "ro": 8.817, "ru": 2.435},
+    'hu': {"bg": 1.975, "cs": 2.869, "de": 2.986, "el": 1.173, "en": 1.844, "es": 2.105, "fi": 1.581, "fr": 2.086, "it": 2.633, "pt": 2.601, "ro": 2.133, "ru": 1.839},
+    'it': {"bg": 3.05, "cs": 3.113, "de": 4.186, "el": 1.923, "en": 6.757, "es": 10.451, "fi": 1.825, "fr": 9.544, "hu": 2.633, "pt": 12.172, "ro": 7.824, "ru": 2.816},
+    'pt': {"bg": 3.324, "cs": 3.315, "de": 4.616, "el": 1.882, "en": 7.944, "es": 17.414, "fi": 1.785, "fr": 11.979, "hu": 2.601, "it": 12.172, "ro": 9.065, "ru": 2.92},
+    'ro': {"bg": 3.138, "cs": 2.777, "de": 3.473, "el": 1.411, "en": 6.194, "es": 8.428, "fi": 1.511, "fr": 8.817, "hu": 2.133, "it": 7.824, "pt": 9.065, "ru": 2.509},
+    'ru': {"bg": 8.461, "cs": 6.17, "de": 2.961, "el": 0.937, "en": 2.025, "es": 2.252, "fi": 1.02, "fr": 2.435, "hu": 1.839, "it": 2.816, "pt": 2.92, "ro": 2.509}
+}
+
+
 def load_translate_cache():
     if not os.path.exists("translate_cache.pickle"):
         return {}
@@ -132,11 +148,13 @@ class Translator:
             for sent in batch:
                 for _ in range(max_len - len(sent)):
                     sent.append(self.tokenizer.pad_token)
-            id_batch = [self.tokenizer.convert_tokens_to_ids(sent) for sent in batch]
+            id_batch = [
+                self.tokenizer.convert_tokens_to_ids(sent) for sent in batch]
             input_ids = torch.tensor(id_batch).to(self.device)
             outputs = self.model.generate(input_ids)
             for sent_out in outputs:
-                decoded = self.tokenizer.decode(sent_out, skip_special_tokens=True)
+                decoded = self.tokenizer.decode(
+                    sent_out, skip_special_tokens=True)
                 uncached_targets.append(decoded)
 
         for sent in uncached_sources:
@@ -182,6 +200,9 @@ class DataInstance(ABC):
             self.tgt_sentences, show_progress_bar=False).mean(0)
 
 
+DataPoinGenerator = Callable[[Dict[str, List[str]]], List[DataInstance]]
+
+
 def load_names(handle: TextIO) -> List[str]:
     names = {}
     for line in handle:
@@ -191,16 +212,10 @@ def load_names(handle: TextIO) -> List[str]:
     return names
 
 
-
-def process_templates(
+def extract_vectors(
         sbert_model: str,
         target_lng: str,
-        data_point_generator: Callable[[Dict[str, List[str]]], List[DataInstance]],
-        pca: PCA = None) -> None:
-
-    if not target_lng in TRANSLATORS:
-        raise ValueError(f"No translator for language '{target_lng}'.")
-
+        data_point_generator: DataPoinGenerator) -> List[DataInstance]:
     logging.info("Generate templated English sentences.")
     data_points = data_point_generator()
 
@@ -218,6 +233,21 @@ def process_templates(
     for item in tqdm(data_points):
         item.get_avg_vector(sbert)
 
+    return data_points
+
+
+def process_templates(
+        sbert_model: str,
+        target_lng: str,
+        data_point_generator: DataPoinGenerator,
+        pca: PCA = None) -> None:
+
+    if not target_lng in TRANSLATORS:
+        raise ValueError(f"No translator for language '{target_lng}'.")
+
+    data_points = extract_vectors(
+        sbert_model, target_lng, data_point_generator)
+
     logging.info("Do PCA.")
     embeddings = np.stack([item.vector for item in data_points])
     if pca is None:
@@ -231,4 +261,3 @@ def process_templates(
         csv_lines.append(item.get_csv() + "," + ",".join(map(str, vector)))
 
     return pca, csv_lines
-

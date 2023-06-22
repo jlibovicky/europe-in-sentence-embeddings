@@ -1,5 +1,6 @@
 # European Nations in Sentence Embeddings
 
+
 ## What is in the representation
 
 This is based on three experiments losely based on the Moral Dimensions
@@ -22,9 +23,9 @@ country of origin.
 
 ```bash
 mkdir country-only-csvs
-for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE xlmr_nliv2_5-langs; do
     for LNG in bg cs de el en es fi fr hu it pt ro ru; do
-        python3 generate_country_only_templates.py ${MODEL} ${LNG} > country-only-csvs/${MODEL/\//-}.${LNG}.csv;
+        python3 generate_country_only_templates.py ${MODEL} ${LNG} country-only-csvs/${MODEL/\//-}.${LNG}.csv;
     done
 done
 ```
@@ -36,7 +37,7 @@ that being from a specific country is considered prestigeous.
 
 ```bash
 mkdir country-prestige-csvs
-for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE xlmr_nliv2_5-langs; do
     for LNG in bg cs de el en es fi fr hu it pt ro ru; do
         python3 generate_country_prestige_templates.py ${MODEL} ${LNG} country-prestige-csvs/${MODEL/\//-}.${LNG}.csv;
     done
@@ -53,7 +54,7 @@ corresponding
 
 ```bash
 mkdir job-country-prestige-csvs
-for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE; do
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers/LaBSE xlmr_nliv2_5-langs; do
     for LNG in bg cs de el en es fi fr hu it pt ro ru; do
         python3 generate_job_prestige_templates_and_apply_to_countries.py ${MODEL} ${LNG} job-country-prestige-csvs/${MODEL/\//-}.${LNG}.{job,country}.csv
     done
@@ -61,3 +62,25 @@ done
 ```
 
 ### Evaluating the experiments
+
+Evaluate with what country groups the first PCA dim correlates.
+
+```bash
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers-LaBSE xlmr_nliv2_5-langs; do
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 label_eval.py country-only-csvs/${MODEL}.${LNG}.csv 2> /dev/null; done
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 label_eval.py country-prestige-csvs/${MODEL}.${LNG}.csv 2> /dev/null; done
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 label_eval.py job-country-prestige-csvs/${MODEL}.${LNG}.country.csv 2> /dev/null; done
+done
+```
+
+Evalute correlation of first PCA dim with country GDP.
+
+```bash
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers-LaBSE xlmr_nliv2_5-langs; do
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 country_gdp_eval.py country-only-csvs/${MODEL}.${LNG}.csv 2> /dev/null; done
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 country_gdp_eval.py country-prestige-csvs/${MODEL}.${LNG}.csv 2> /dev/null; done
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do echo -en "${LNG},"; python3 country_gdp_eval.py job-country-prestige-csvs/${MODEL}.${LNG}.country.csv 2> /dev/null; done
+done
+```
+
+Evalute how well the extracted dimension separates low- and high- profile jobs.

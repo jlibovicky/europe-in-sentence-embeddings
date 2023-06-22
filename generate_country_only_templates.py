@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Dict, List
+from typing import List
 
 import argparse
 import logging
@@ -50,10 +50,10 @@ class CountryDataInstance(DataInstance):
             self.en_sentences = generated_sentences
 
     def get_csv(self) -> str:
-        return (f"{self.country_code}")
+        return f"{self.country_code}"
 
     def _format_template(self, template: str) -> str:
-            return template.replace("<COUNTRY>", self.country)
+        return template.replace("<COUNTRY>", self.country)
 
 
 def generate_data_points() -> List[CountryDataInstance]:

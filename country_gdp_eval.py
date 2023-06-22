@@ -62,6 +62,7 @@ COUNTRY_GDP = {
     "tr": [19933, 18731, 20027, 21932, 22610, 24117, 24881, 25958, 26385, 27913, 28318, 28197, 28393],
     "ua": [13719, 11694, 12221, 12933, 12985, 13020, 12385, 11216, 11536, 11860, 12336, 12804, 12375],
     "uk": [43767, 41592, 42147, 42429, 42754, 43271, 44239, 45041, 45712, 46372, 46853, 47368, 42675],
+    "en": [43767, 41592, 42147, 42429, 42754, 43271, 44239, 45041, 45712, 46372, 46853, 47368, 42675],
     "xk": [7032, 7327, 7627, 8040, 8105, 8486, 8796, 9445, 10031, 10436, 10755, 11318, 10706]
 }
 
@@ -69,9 +70,8 @@ COUNTRY_GDP = {
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=argparse.FileType("r"))
-    parser.add_argument("readable_output", type=argparse.FileType("w"), nargs="?", default=sys.stdout)
-    parser.add_argument("--json-output", type=argparse.FileType("w"), default=None, required=False)
     parser.add_argument("--confidence", type=float, default=0.95)
+    parser.add_argument("--human-readable", action="store_true", default=False)
     args = parser.parse_args()
 
     all_gdp_values = []
@@ -92,11 +92,16 @@ def main():
         best_corr = 0.0
         for year, gdps in zip(range(2008, 2021), all_gdp_values.T):
             corr = scipy.stats.pearsonr(gdps, values)
-            if corr.pvalue < 0.05 and np.abs(corr.statistic) > best_corr:
+            if (corr.pvalue < (1 - args.confidence) and
+                    np.abs(corr.statistic) > best_corr):
                 best_corr = np.abs(corr.statistic)
                 best_year = year
 
-        print(f"PCA {i + 1}    year: {best_year}, corr: {best_corr}")
+        if args.human_readable:
+            print(f"PCA {i + 1}    year: {best_year}, corr: {best_corr}")
+        else:
+            print(best_corr)
+            break
 
 
     logging.info("Done.")
