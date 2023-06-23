@@ -1,10 +1,9 @@
-# European Nations in Sentence Embeddings
+# Is a Prestigious Job the same as a Prestigious Country? A Case Study on Multilingual Sentence Embeddings and European Countries
 
+## Extracting the domninant dimesions sentence embeddings with templates
 
-## What is in the representation
-
-This is based on three experiments losely based on the Moral Dimensions
-Framework.
+The dimension extraction proceeds as follows (inspired by the Moral Dimension
+framework by [Schramowski et al.](https://arxiv.org/abs/2103.11790)).
 
 1. Take just statements about the country and check first PCA dim
 2. Take statements about country prestige and check first PCA dim
@@ -50,7 +49,7 @@ In this experiment, the templated texts used for PCA only contain statements
 about job prestige. Moreover, we specifically select jobs to have particularly
 low or high prestige. The PCA is done on vectors originating from these
 sentences. In a second step, we apply the same projection on vectors
-corresponding
+corresponding to countries and evaluate how they get ordered.
 
 ```bash
 mkdir job-country-prestige-csvs
@@ -61,7 +60,9 @@ for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-c
 done
 ```
 
-### Evaluating the experiments
+## Evaluation
+
+### Interpret the PCA dimensions
 
 Evaluate with what country groups the first PCA dim correlates.
 
@@ -84,3 +85,37 @@ done
 ```
 
 Evalute how well the extracted dimension separates low- and high- profile jobs.
+
+```bash
+for MODEL in paraphrase-multilingual-mpnet-base-v2 distiluse-base-multilingual-cased-v2 sentence-transformers-LaBSE xlmr_nliv2_5-langs; do
+    for LNG in bg cs de el en es fi fr hu it pt ro ru; do
+        python3 eval_job_separation.py job-country-prestige-csvs/${MODEL}.${LNG}.job.csv 2> /dev/null
+    done
+    echo
+done
+```
+
+### Evaluate cross-lingal similarity
+
+Compute how the cross-language correlation depends on country distance, GDP
+difference and lexical similarity of the languages.
+
+```bash
+python3 compare_languages.py \
+    job-country-prestige-csvs/paraphrase-multilingual-mpnet-base-v2.{}.country.csv \
+    job-country-prestige-csvs/distiluse-base-multilingual-cased-v2.{}.country.csv \
+    job-country-prestige-csvs/sentence-transformers-LaBSE.{}.job.csv \
+    job-country-prestige-csvs/xlmr_nliv2_5-langs.{}.job.csv \
+    --is-job --labels "Mul. Par. MPNet" "Dist. mUSE" "LaBSE" "XLM-R-NLI"
+```
+
+## Citation
+
+```bibtex
+@misc{libovicky2023prestigious,
+  title={Is a Prestigious Job the same as a Prestigious Country? A Case Study on Multilingual Sentence Embeddings and European Countries},
+  author={Libovick{\'y}, Jind{\v{r}}ich},
+  journal={arXiv preprint arXiv:2305.14482},
+  year={2023}
+}
+```
